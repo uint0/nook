@@ -23,7 +23,7 @@ fn resolve_log_path() -> Result<PathBuf> {
                 .join(".cache")
         });
 
-    let log_dir = cache_dir.join("nook");
+    let log_dir = cache_dir.join("nook").join("logs");
     std::fs::create_dir_all(&log_dir)
         .with_context(|| format!("failed to create log directory: {}", log_dir.display()))?;
 
@@ -49,7 +49,7 @@ pub fn init() -> Result<(PathBuf, WorkerGuard)> {
 
     // Update the latest.log symlink to point to this run's log file.
     // Remove the old symlink first (ignore errors if it doesn't exist).
-    let latest_link = log_path.parent().unwrap().join("latest.log");
+    let latest_link = log_path.parent().unwrap().join("latest.log"); // nook/logs/latest.log
     let _ = std::fs::remove_file(&latest_link);
     std::os::unix::fs::symlink(&log_path, &latest_link).with_context(|| {
         format!(

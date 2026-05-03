@@ -21,7 +21,13 @@ pub async fn run(
     let start_date = start_date.unwrap_or_else(|| default_start_date(&timezone));
     let end_date = end_date.unwrap_or_else(|| default_end_date(&timezone));
 
-    tracing::debug!(location_id, start_date, end_date, timezone, "Running booking show");
+    tracing::debug!(
+        location_id,
+        start_date,
+        end_date,
+        timezone,
+        "Running booking show"
+    );
     let sp = spinner::start("Fetching bookings...");
     let dates = client
         .get_registration_dates(&location_id, &start_date, &end_date)

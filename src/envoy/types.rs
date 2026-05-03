@@ -16,6 +16,24 @@ pub struct GraphQlError {
     pub message: String,
 }
 
+// ── /desks endpoint ───────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize, serde::Serialize)]
+pub struct DesksResponse {
+    pub data: Vec<DeskEntry>,
+}
+
+#[derive(Debug, Deserialize, serde::Serialize)]
+pub struct DeskEntry {
+    pub id: String,
+    pub attributes: DeskEntryAttributes,
+}
+
+#[derive(Debug, Deserialize, serde::Serialize)]
+pub struct DeskEntryAttributes {
+    pub name: String,
+}
+
 // ── /locations endpoint ───────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]

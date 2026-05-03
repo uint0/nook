@@ -10,7 +10,6 @@ use crate::util::date::{
     DateFormat, arrival_time_for_date, default_end_date, default_start_date, format_date,
     parse_date,
 };
-use crate::util::location::parse_location;
 use crate::util::spinner;
 
 /// GraphQL error message returned when a date is outside the bookable window.
@@ -132,32 +131,67 @@ fn add_existing_row(table: &mut Table, date: &str, desk: &str, invite_id: &str) 
     ]);
 }
 
-/// Parse a `raw:<desk_id>` string and return the desk ID.
-fn parse_desk(desk: &str) -> Result<&str> {
-    parse_location(desk)
-        .with_context(|| format!("invalid --desk format '{desk}' — expected 'raw:<id>'"))
+/// Resolve a desk argument to a desk ID.
+///
+/// - `raw:<id>` — used directly, no lookup needed
+/// - anything else — looked up by name in the desk cache (fetched from API if missing)
+async fn resolve_desk(client: &mut EnvoyClient, location_id: &str, desk: &str) -> Result<String> {
+    if let Some(id) = desk.strip_prefix("raw:") {
+        return Ok(id.to_owned());
+    }
+    tracing::debug!(desk_name = desk, "Looking up desk ID by name");
+    crate::cache::desks::lookup_desk_id(client, location_id, desk).await
 }
 
 // ── Command entry points ──────────────────────────────────────────────────────
 
 pub async fn run(profile: Profile, backfill: bool, date: &str, desk: Option<&str>) -> Result<()> {
     let location_id = profile.location_id.clone();
-    // Parse desk_id upfront so we fail fast on bad input before any API calls
-    let desk_id = desk.map(parse_desk).transpose()?;
     let mut client = EnvoyClient::new(profile.token_store)?;
 
-    // Fetch location timezone and user info once upfront
+    // Fetch location timezone, user info, and optionally resolve desk name
     let sp = spinner::start("Loading location and user info...");
     let timezone = client.get_location_timezone(&location_id).await?;
     let user = client.get_me().await?;
     sp.finish_and_clear();
 
-    tracing::debug!(location_id, timezone, backfill, desk_id, "Running booking create");
+    // Resolve desk: raw:<id> is used directly; a name triggers a cache lookup
+    let desk_id: Option<String> = if let Some(d) = desk {
+        let sp = spinner::start(format!("Resolving desk '{d}'..."));
+        let id = resolve_desk(&mut client, &location_id, d).await?;
+        sp.finish_and_clear();
+        Some(id)
+    } else {
+        None
+    };
+
+    tracing::debug!(
+        location_id,
+        timezone,
+        backfill,
+        desk_id,
+        "Running booking create"
+    );
 
     if backfill {
-        run_backfill(&mut client, &location_id, &timezone, desk_id, &user).await
+        run_backfill(
+            &mut client,
+            &location_id,
+            &timezone,
+            desk_id.as_deref(),
+            &user,
+        )
+        .await
     } else {
-        run_single(&mut client, &location_id, &timezone, desk_id, date, &user).await
+        run_single(
+            &mut client,
+            &location_id,
+            &timezone,
+            desk_id.as_deref(),
+            date,
+            &user,
+        )
+        .await
     }
 }
 
