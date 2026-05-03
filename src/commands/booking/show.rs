@@ -3,15 +3,28 @@ use comfy_table::{Attribute, Cell, Table, presets::UTF8_FULL};
 
 use crate::envoy::{client::EnvoyClient, types::ScreeningCard};
 use crate::profile::Profile;
-use crate::util::date::{DateFormat, format_date};
+use crate::util::date::{DateFormat, default_end_date, default_start_date, format_date};
 use crate::util::spinner;
 
-pub async fn run(profile: Profile, start_date: &str, end_date: &str) -> Result<()> {
-    tracing::debug!(location_id = %profile.location_id, start_date, end_date, "Running booking show");
+pub async fn run(
+    profile: Profile,
+    start_date: Option<String>,
+    end_date: Option<String>,
+) -> Result<()> {
+    let location_id = profile.location_id.clone();
     let mut client = EnvoyClient::new(profile.token_store)?;
+
+    let sp = spinner::start("Fetching location info...");
+    let timezone = client.get_location_timezone(&location_id).await?;
+    sp.finish_and_clear();
+
+    let start_date = start_date.unwrap_or_else(|| default_start_date(&timezone));
+    let end_date = end_date.unwrap_or_else(|| default_end_date(&timezone));
+
+    tracing::debug!(location_id, start_date, end_date, timezone, "Running booking show");
     let sp = spinner::start("Fetching bookings...");
     let dates = client
-        .get_registration_dates(&profile.location_id, start_date, end_date)
+        .get_registration_dates(&location_id, &start_date, &end_date)
         .await?;
     sp.finish_and_clear();
 

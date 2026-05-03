@@ -17,16 +17,20 @@ enum DateMode {
 }
 
 pub async fn run(profile: Profile, date: &str) -> Result<()> {
-    let timezone = profile.timezone.clone();
+    let location_id = profile.location_id.clone();
+    let mut client = EnvoyClient::new(profile.token_store)?;
+
+    let sp = spinner::start("Fetching location info...");
+    let timezone = client.get_location_timezone(&location_id).await?;
+    sp.finish_and_clear();
+
     let date_mode = if date == "latest" {
         DateMode::Latest
     } else {
         DateMode::Explicit(parse_date(date, &timezone)?)
     };
 
-    tracing::debug!(location_id = %profile.location_id, date, "Running booking check-in");
-    let location_id = profile.location_id.clone();
-    let mut client = EnvoyClient::new(profile.token_store)?;
+    tracing::debug!(location_id, date, timezone, "Running booking check-in");
 
     match date_mode {
         DateMode::Explicit(target_date) => {

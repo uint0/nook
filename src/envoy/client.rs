@@ -8,13 +8,15 @@ use tracing::{info, warn};
 
 use super::types::{
     CreateInviteReservationData, EmployeeRegistrationPartialDayData, InviteReservationResponse,
-    MeResponse, RegistrationDate, SignInEntry, SignInError, SignInInviteData, UserInfo,
+    LocationResponse, MeResponse, RegistrationDate, SignInEntry, SignInError, SignInInviteData,
+    UserInfo,
 };
 use super::util::parse_graphql_result;
 use crate::profile::token_store::TokenStore;
 
 const GRAPHQL_URL: &str = "https://app.envoy.com/a/graphql_federated";
 const ME_URL: &str = "https://app.envoy.com/a/visitors/api/v2/users/me";
+const LOCATION_URL: &str = "https://app.envoy.com/a/visitors/api/v2/locations";
 
 const QUERY_EMPLOYEE_REGISTRATION: &str =
     include_str!("queries/EmployeeRegistrationPartialDay.gql");
@@ -171,6 +173,28 @@ impl EnvoyClient {
             return self.send_with_backoff(body).await;
         }
         Ok(resp)
+    }
+
+    /// Fetch the IANA timezone for a location from the /locations endpoint.
+    pub async fn get_location_timezone(&mut self, location_id: &str) -> Result<String> {
+        let url = format!("{LOCATION_URL}/{location_id}");
+        let resp = self.get_with_backoff(&url).await?;
+        if matches!(resp.status(), StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+            warn!(status = %resp.status(), "Got auth error on /locations, retrying after token refresh...");
+            self.do_refresh().await?;
+            let resp = self.get_with_backoff(&url).await?;
+            return self.parse_location_response(resp).await;
+        }
+        self.parse_location_response(resp).await
+    }
+
+    async fn parse_location_response(&self, resp: reqwest::Response) -> Result<String> {
+        let resp = resp.error_for_status().context("/locations request failed")?;
+        let body = resp.text().await.context("failed to read /locations response body")?;
+        tracing::trace!(response_body = %body, "/locations response");
+        let loc: LocationResponse = serde_json::from_str(&body)
+            .context("failed to parse /locations response")?;
+        Ok(loc.data.attributes.timezone)
     }
 
     /// Fetch the current user's profile from the /me endpoint.

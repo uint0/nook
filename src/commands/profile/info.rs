@@ -44,10 +44,11 @@ pub async fn run(profile_name: &str, cipher: &Cipher, path: &Path) -> Result<()>
     let store = TokenStore::new(profile_name, access_token, refresh_token, cipher, path);
     let mut client = EnvoyClient::new(store)?;
     let me = client.get_me().await?;
+    let timezone = client.get_location_timezone(&raw.location_id).await?;
 
     println!("Profile: {profile_name}");
     println!("Location ID: {}", raw.location_id);
-    println!("Timezone: {}", raw.timezone);
+    println!("Timezone: {timezone}");
     println!("Profiles file: {}", path.display());
     println!();
     println!("User");

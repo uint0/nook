@@ -142,22 +142,17 @@ fn parse_desk(desk: &str) -> Result<&str> {
 
 pub async fn run(profile: Profile, backfill: bool, date: &str, desk: Option<&str>) -> Result<()> {
     let location_id = profile.location_id.clone();
-    let timezone = profile.timezone.clone();
     // Parse desk_id upfront so we fail fast on bad input before any API calls
     let desk_id = desk.map(parse_desk).transpose()?;
-    tracing::debug!(
-        location_id,
-        timezone,
-        backfill,
-        desk_id,
-        "Running booking create"
-    );
     let mut client = EnvoyClient::new(profile.token_store)?;
 
-    // Fetch user info once upfront — used for all booking requests
-    let sp = spinner::start("Loading user info...");
+    // Fetch location timezone and user info once upfront
+    let sp = spinner::start("Loading location and user info...");
+    let timezone = client.get_location_timezone(&location_id).await?;
     let user = client.get_me().await?;
     sp.finish_and_clear();
+
+    tracing::debug!(location_id, timezone, backfill, desk_id, "Running booking create");
 
     if backfill {
         run_backfill(&mut client, &location_id, &timezone, desk_id, &user).await
