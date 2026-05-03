@@ -301,20 +301,26 @@ impl EnvoyClient {
             desk_id,
             "Creating invite reservation"
         );
+        // Build variables — omit deskId entirely when not specified rather than
+        // sending null, as the API ignores null deskId but respects an absent field.
+        let mut variables = serde_json::json!({
+            "invite": {
+                "fullName": full_name,
+                "email": email,
+                "location": location_id,
+                "userData": [
+                    { "field": "Purpose of visit", "value": "Employee registration" }
+                ],
+                "expectedArrivalTime": expected_arrival_time,
+            }
+        });
+        if let Some(id) = desk_id {
+            variables["deskId"] = serde_json::Value::String(id.to_owned());
+        }
+
         let body = json!({
             "operationName": "CreateInviteReservation",
-            "variables": {
-                "deskId": desk_id,
-                "invite": {
-                    "fullName": full_name,
-                    "email": email,
-                    "location": location_id,
-                    "userData": [
-                        { "field": "Purpose of visit", "value": "Employee registration" }
-                    ],
-                    "expectedArrivalTime": expected_arrival_time,
-                },
-            },
+            "variables": variables,
             "query": MUTATION_CREATE_INVITE_RESERVATION,
         });
 

@@ -101,13 +101,13 @@ fn add_booking_row(
     requested_desk_id: Option<&str>,
 ) {
     let got_wrong_desk = requested_desk_id.is_some_and(|requested_id| {
+        // Only flag as wrong if we got a desk back AND it doesn't match.
+        // If no desk was assigned in the response, we can't verify — don't flag it.
         result
             .reservation
             .as_ref()
             .and_then(|r| r.desk.as_ref())
-            .map(|d| d.id.as_str())
-            .map(|actual_id| actual_id != requested_id)
-            .unwrap_or(true) // no desk assigned = wrong
+            .is_some_and(|d| d.id.as_str() != requested_id)
     });
 
     if got_wrong_desk {
