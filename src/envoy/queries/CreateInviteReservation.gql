@@ -1,0 +1,15 @@
+mutation CreateInviteReservation($deskId: ID, $invite: NewInviteInput, $inviteId: ID) {
+  createInviteReservation(deskId: $deskId, invite: $invite, inviteId: $inviteId) {
+    invite {
+      id
+      expectedArrivalTime
+      location { name }
+    }
+    reservation {
+      desk {
+        id
+        name
+      }
+    }
+  }
+}

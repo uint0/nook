@@ -1,0 +1,6 @@
+mutation SignInInvite($inviteID: ID!, $reservationID: ID) {
+  signInInvite(inviteId: $inviteID, reservationId: $reservationID) {
+    id
+    signedInAt
+  }
+}

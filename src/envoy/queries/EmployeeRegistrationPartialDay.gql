@@ -1,0 +1,24 @@
+query EmployeeRegistrationPartialDay($locationId: ID!, $startDate: DateTime!, $endDate: DateTime!) {
+  employeeRegistrationPartialDay(locationId: $locationId, startDate: $startDate, endDate: $endDate) {
+    registrationDates {
+      date
+      peopleRegistered
+      reservations {
+        desk {
+          name
+          floor { name }
+        }
+      }
+      screeningCard {
+        __typename
+        ... on Invite {
+          id
+          location { name }
+        }
+        ... on SelfCertify {
+          __typename
+        }
+      }
+    }
+  }
+}
