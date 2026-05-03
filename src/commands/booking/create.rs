@@ -165,12 +165,33 @@ pub async fn run(profile: Profile, backfill: bool, date: &str, desk: Option<&str
         None
     };
 
-    tracing::debug!(location_id, timezone, backfill, desk_id, "Running booking create");
+    tracing::debug!(
+        location_id,
+        timezone,
+        backfill,
+        desk_id,
+        "Running booking create"
+    );
 
     if backfill {
-        run_backfill(&mut client, &location_id, &timezone, desk_id.as_deref(), &user).await
+        run_backfill(
+            &mut client,
+            &location_id,
+            &timezone,
+            desk_id.as_deref(),
+            &user,
+        )
+        .await
     } else {
-        run_single(&mut client, &location_id, &timezone, desk_id.as_deref(), date, &user).await
+        run_single(
+            &mut client,
+            &location_id,
+            &timezone,
+            desk_id.as_deref(),
+            date,
+            &user,
+        )
+        .await
     }
 }
 

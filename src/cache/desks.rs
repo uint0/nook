@@ -71,10 +71,8 @@ async fn load_or_fetch(
     let response = client.get_desks(location_id).await?;
 
     // Persist to cache
-    std::fs::create_dir_all(path.parent().unwrap())
-        .context("failed to create cache directory")?;
-    let json = serde_json::to_string_pretty(&response)
-        .context("failed to serialise desk cache")?;
+    std::fs::create_dir_all(path.parent().unwrap()).context("failed to create cache directory")?;
+    let json = serde_json::to_string_pretty(&response).context("failed to serialise desk cache")?;
     std::fs::write(&path, &json)
         .with_context(|| format!("failed to write desk cache: {}", path.display()))?;
     tracing::debug!(path = %path.display(), "Desk cache written");

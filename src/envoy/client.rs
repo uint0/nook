@@ -181,7 +181,10 @@ impl EnvoyClient {
         let url = format!("{DESKS_URL}?filter[location-id]={location_id}");
         tracing::debug!(location_id, "Fetching desks list");
         let resp = self.get_with_backoff(&url).await?;
-        if matches!(resp.status(), StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+        if matches!(
+            resp.status(),
+            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN
+        ) {
             tracing::warn!(status = %resp.status(), "Auth error on /desks, refreshing token...");
             self.do_refresh().await?;
             let resp = self.get_with_backoff(&url).await?;
@@ -192,7 +195,10 @@ impl EnvoyClient {
 
     async fn parse_desks_response(&self, resp: reqwest::Response) -> Result<DesksResponse> {
         let resp = resp.error_for_status().context("/desks request failed")?;
-        let body = resp.text().await.context("failed to read /desks response body")?;
+        let body = resp
+            .text()
+            .await
+            .context("failed to read /desks response body")?;
         tracing::trace!(response_body = %body, "/desks response");
         serde_json::from_str(&body).context("failed to parse /desks response")
     }
@@ -201,7 +207,10 @@ impl EnvoyClient {
     pub async fn get_location_timezone(&mut self, location_id: &str) -> Result<String> {
         let url = format!("{LOCATION_URL}/{location_id}");
         let resp = self.get_with_backoff(&url).await?;
-        if matches!(resp.status(), StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+        if matches!(
+            resp.status(),
+            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN
+        ) {
             warn!(status = %resp.status(), "Got auth error on /locations, retrying after token refresh...");
             self.do_refresh().await?;
             let resp = self.get_with_backoff(&url).await?;
@@ -211,11 +220,16 @@ impl EnvoyClient {
     }
 
     async fn parse_location_response(&self, resp: reqwest::Response) -> Result<String> {
-        let resp = resp.error_for_status().context("/locations request failed")?;
-        let body = resp.text().await.context("failed to read /locations response body")?;
+        let resp = resp
+            .error_for_status()
+            .context("/locations request failed")?;
+        let body = resp
+            .text()
+            .await
+            .context("failed to read /locations response body")?;
         tracing::trace!(response_body = %body, "/locations response");
-        let loc: LocationResponse = serde_json::from_str(&body)
-            .context("failed to parse /locations response")?;
+        let loc: LocationResponse =
+            serde_json::from_str(&body).context("failed to parse /locations response")?;
         Ok(loc.data.attributes.timezone)
     }
 
