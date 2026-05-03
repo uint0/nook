@@ -68,13 +68,23 @@ $ NOOK_AUTH_KEY=<key> nook --profile "my-profile" booking create \
     --date latest
 ```
 
-Optionally specify a preferred desk using `raw:<desk_id>`:
+Optionally specify a preferred desk by name or raw ID:
 
 ```sh
+# By desk name (recommended) — looks up the ID automatically
+$ NOOK_AUTH_KEY=<key> nook --profile "my-profile" booking create \
+    --date latest \
+    --desk "26.036"
+
+# By raw ID — bypasses lookup entirely
 $ NOOK_AUTH_KEY=<key> nook --profile "my-profile" booking create \
     --date latest \
     --desk raw:12345
 ```
+
+Desk names are resolved via a local cache (`~/.cache/nook/cache/desks-<location-id>.json`).
+The cache is populated on first use and automatically refreshed if a desk name is not found.
+To force a refresh manually, delete the cache file.
 
 If the booking lands on a different desk than requested, it is shown in yellow
 in the output table with the requested desk ID noted.
@@ -117,8 +127,9 @@ New profiles are always created at the XDG path unless a local `./nook.yml` alre
 | File       | Default path                        | Description                           |
 |------------|-------------------------------------|---------------------------------------|
 | Profiles   | `~/.config/nook/nook.yml`           | Encrypted profile config              |
-| Log file   | `~/.cache/nook/<YYYYMMDDTHHMMSS>.log` | Structured JSON log, one file per run |
-| Latest log | `~/.cache/nook/latest.log`          | Symlink to the most recent log file   |
+| Log file   | `~/.cache/nook/logs/<YYYYMMDDTHHMMSS>.log` | Structured JSON log, one file per run |
+| Latest log | `~/.cache/nook/logs/latest.log`            | Symlink to the most recent log file   |
+| Desk cache | `~/.cache/nook/cache/desks-<location-id>.json` | Cached desk name→id map, delete to refresh |
 
 ### Profiles file format
 
@@ -157,14 +168,14 @@ RUST_LOG=debug nook --profile "my-profile" booking show
 NOOK_LOG_LEVEL=trace nook --profile "my-profile" booking show
 
 # Tail the latest log file
-tail -f ~/.cache/nook/latest.log | jq .
+tail -f ~/.cache/nook/logs/latest.log | jq .
 ```
 
 On any fatal error, the path to the log file is printed to stderr:
 
 ```
 error: token refresh failed: ...
-(log file: /Users/you/.cache/nook/20260503T120400.log)
+(log file: /Users/you/.cache/nook/logs/20260503T120400.log)
 ```
 
 Log entries are structured JSON for easy parsing:

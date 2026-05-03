@@ -7,9 +7,9 @@ use serde_json::json;
 use tracing::{info, warn};
 
 use super::types::{
-    CreateInviteReservationData, EmployeeRegistrationPartialDayData, InviteReservationResponse,
-    LocationResponse, MeResponse, RegistrationDate, SignInEntry, SignInError, SignInInviteData,
-    UserInfo,
+    CreateInviteReservationData, DesksResponse, EmployeeRegistrationPartialDayData,
+    InviteReservationResponse, LocationResponse, MeResponse, RegistrationDate, SignInEntry,
+    SignInError, SignInInviteData, UserInfo,
 };
 use super::util::parse_graphql_result;
 use crate::profile::token_store::TokenStore;
@@ -17,6 +17,7 @@ use crate::profile::token_store::TokenStore;
 const GRAPHQL_URL: &str = "https://app.envoy.com/a/graphql_federated";
 const ME_URL: &str = "https://app.envoy.com/a/visitors/api/v2/users/me";
 const LOCATION_URL: &str = "https://app.envoy.com/a/visitors/api/v2/locations";
+const DESKS_URL: &str = "https://app.envoy.com/a/rms/desks";
 
 const QUERY_EMPLOYEE_REGISTRATION: &str =
     include_str!("queries/EmployeeRegistrationPartialDay.gql");
@@ -173,6 +174,27 @@ impl EnvoyClient {
             return self.send_with_backoff(body).await;
         }
         Ok(resp)
+    }
+
+    /// Fetch all desks for a location from the /desks endpoint.
+    pub async fn get_desks(&mut self, location_id: &str) -> Result<DesksResponse> {
+        let url = format!("{DESKS_URL}?filter[location-id]={location_id}");
+        tracing::debug!(location_id, "Fetching desks list");
+        let resp = self.get_with_backoff(&url).await?;
+        if matches!(resp.status(), StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+            tracing::warn!(status = %resp.status(), "Auth error on /desks, refreshing token...");
+            self.do_refresh().await?;
+            let resp = self.get_with_backoff(&url).await?;
+            return self.parse_desks_response(resp).await;
+        }
+        self.parse_desks_response(resp).await
+    }
+
+    async fn parse_desks_response(&self, resp: reqwest::Response) -> Result<DesksResponse> {
+        let resp = resp.error_for_status().context("/desks request failed")?;
+        let body = resp.text().await.context("failed to read /desks response body")?;
+        tracing::trace!(response_body = %body, "/desks response");
+        serde_json::from_str(&body).context("failed to parse /desks response")
     }
 
     /// Fetch the IANA timezone for a location from the /locations endpoint.
