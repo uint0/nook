@@ -95,10 +95,7 @@ async fn run() -> Result<()> {
                 let cipher = load_cipher()?;
                 let path = profiles_path();
                 let loaded = profile::load(profile_name, &cipher, &path).await?;
-                let tz = loaded.timezone.clone();
-                let start_date = start_date.unwrap_or_else(|| util::date::default_start_date(&tz));
-                let end_date = end_date.unwrap_or_else(|| util::date::default_end_date(&tz));
-                commands::booking::show::run(loaded, &start_date, &end_date).await?;
+                commands::booking::show::run(loaded, start_date, end_date).await?;
             }
         },
     }

@@ -16,6 +16,23 @@ pub struct GraphQlError {
     pub message: String,
 }
 
+// ── /locations endpoint ───────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct LocationResponse {
+    pub data: LocationData,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LocationData {
+    pub attributes: LocationAttributes,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LocationAttributes {
+    pub timezone: String,
+}
+
 // ── /me endpoint ─────────────────────────────────────────────────────────────
 
 /// Minimal user info from the /me endpoint — what we need to create bookings.

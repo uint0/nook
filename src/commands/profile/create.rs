@@ -71,14 +71,12 @@ pub async fn run(profile_name: &str, path: &Path, cipher: Option<Cipher>) -> Res
     let cipher = resolve_cipher(cipher)?;
 
     let location_id = prompt("Location ID")?;
-    let timezone = prompt("Timezone (IANA, e.g. Australia/Sydney)")?;
     let access_token = prompt_secret("Access token")?;
     let refresh_token = prompt_secret("Refresh token")?;
 
     let new_profile = RawProfile {
         name: profile_name.to_owned(),
         location_id,
-        timezone,
         auth: RawAuth {
             last_refreshed_at: Utc::now().to_rfc3339(),
             token: RawToken {

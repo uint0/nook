@@ -55,9 +55,6 @@ pub struct ProfilesFile {
 pub struct RawProfile {
     pub name: String,
     pub location_id: String,
-    /// IANA timezone string for the office location (e.g. "Australia/Sydney").
-    /// Used to compute correct arrival times regardless of the system timezone.
-    pub timezone: String,
     pub auth: RawAuth,
 }
 
@@ -90,8 +87,6 @@ pub struct Profile {
     #[allow(dead_code)] // used by future commands (booking create, check-in)
     pub name: String,
     pub location_id: String,
-    /// IANA timezone string for the office (e.g. "Australia/Sydney").
-    pub timezone: String,
     pub token_store: TokenStore,
 }
 
@@ -185,7 +180,6 @@ pub async fn load(profile_name: &str, cipher: &Cipher, path: &Path) -> Result<Pr
     Ok(Profile {
         name: raw.name.clone(),
         location_id: raw.location_id.clone(),
-        timezone: raw.timezone.clone(),
         token_store: TokenStore::new(&raw.name, access_token, refresh_token, cipher, path),
     })
 }
