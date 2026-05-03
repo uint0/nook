@@ -174,7 +174,7 @@ async fn run_single(
     date: &str,
     user: &UserInfo,
 ) -> Result<()> {
-    let target_date = parse_date(date)?;
+    let target_date = parse_date(date, timezone)?;
     let arrival_time = arrival_time_for_date(target_date, timezone)?;
 
     let sp = spinner::start("Creating booking...");
@@ -216,8 +216,8 @@ async fn run_backfill(
     desk_id: Option<&str>,
     user: &UserInfo,
 ) -> Result<()> {
-    let start_date = default_start_date();
-    let end_date = default_end_date();
+    let start_date = default_start_date(timezone);
+    let end_date = default_end_date(timezone);
 
     // Note: backfill only covers the default 14-day window. Envoy previously allowed booking
     // further ahead, but this no longer appears to work — possibly a server-side policy change.
@@ -240,8 +240,16 @@ async fn run_backfill(
             }
             _ => {
                 // Not booked — attempt to create
+                // Convert the API's UTC timestamp to a date in the profile timezone.
+                // Using Local here would give the wrong date on UTC CI systems.
                 let target_date = chrono::DateTime::parse_from_rfc3339(&reg.date)
-                    .map(|dt| dt.with_timezone(&Local).date_naive())
+                    .map(|dt| {
+                        if let Ok(tz) = timezone.parse::<chrono_tz::Tz>() {
+                            dt.with_timezone(&tz).date_naive()
+                        } else {
+                            dt.with_timezone(&Local).date_naive()
+                        }
+                    })
                     .with_context(|| format!("failed to parse date '{}'", reg.date))?;
 
                 let arrival_time = arrival_time_for_date(target_date, timezone)?;

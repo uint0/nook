@@ -5,10 +5,18 @@ use chrono_tz::Tz;
 /// ISO 8601 format used when sending timestamps to the Envoy API.
 const API_DATETIME_FMT: &str = "%Y-%m-%dT%H:%M:%S%.3fZ";
 
-/// Parse a date string of the form "YYYY-MM-DD" or "latest" (= today).
-pub fn parse_date(date_str: &str) -> Result<NaiveDate> {
+/// Parse a date string of the form "YYYY-MM-DD" or "latest" (= today in the given timezone).
+///
+/// Uses the provided IANA timezone so "latest" means today in the office timezone,
+/// not the system timezone. This ensures CI (which runs in UTC) books the correct date.
+pub fn parse_date(date_str: &str, timezone: &str) -> Result<NaiveDate> {
     if date_str == "latest" {
-        return Ok(Local::now().date_naive());
+        let today = if let Ok(tz) = timezone.parse::<Tz>() {
+            chrono::Utc::now().with_timezone(&tz).date_naive()
+        } else {
+            Local::now().date_naive()
+        };
+        return Ok(today);
     }
     NaiveDate::parse_from_str(date_str, DateFormat::DateOnly.fmt_str())
         .with_context(|| format!("invalid date '{date_str}' — expected YYYY-MM-DD or 'latest'"))
@@ -76,26 +84,51 @@ pub fn format_date(date_str: &str, format: DateFormat) -> String {
         .unwrap_or_else(|_| date_str.to_owned())
 }
 
-/// Returns the current local midnight as an RFC 3339 string suitable for the API.
-pub fn default_start_date() -> String {
-    // and_hms_opt(0,0,0) only returns None for invalid h/m/s values, which 0,0,0 never are.
-    // from_local_datetime returns None only in ambiguous DST gaps, which midnight rarely hits.
-    // Both are safe to unwrap_or_else to a reasonable fallback.
-    Local::now()
-        .date_naive()
-        .and_hms_opt(0, 0, 0)
-        .and_then(|naive| Local.from_local_datetime(&naive).single())
-        .unwrap_or_else(|| Local::now())
-        .format(API_DATETIME_FMT)
-        .to_string()
+/// Returns midnight today in the given timezone as a UTC API timestamp.
+///
+/// Uses the profile timezone so CI (UTC) and local (Sydney) produce the same window.
+pub fn default_start_date(timezone: &str) -> String {
+    let today = tz_today(timezone);
+    arrival_time_for_date(today, timezone)
+        .unwrap_or_else(|_| chrono::Utc::now().format(API_DATETIME_FMT).to_string())
 }
 
-/// Returns local 23:59 14 days from now as an RFC 3339 string.
-pub fn default_end_date() -> String {
-    (Local::now().date_naive() + chrono::Duration::days(14))
+/// Returns 23:59 fourteen days from today in the given timezone as a UTC API timestamp.
+pub fn default_end_date(timezone: &str) -> String {
+    let end_day = tz_today(timezone) + chrono::Duration::days(14);
+    let end_midnight = end_day
         .and_hms_opt(23, 59, 0)
-        .and_then(|naive| Local.from_local_datetime(&naive).single())
-        .unwrap_or_else(|| Local::now() + chrono::Duration::days(14))
-        .format(API_DATETIME_FMT)
-        .to_string()
+        .map(|naive| {
+            if let Ok(tz) = timezone.parse::<Tz>() {
+                tz.from_local_datetime(&naive)
+                    .single()
+                    .map(|dt| {
+                        dt.with_timezone(&chrono::Utc)
+                            .format(API_DATETIME_FMT)
+                            .to_string()
+                    })
+                    .unwrap_or_else(|| chrono::Utc::now().format(API_DATETIME_FMT).to_string())
+            } else {
+                Local
+                    .from_local_datetime(&naive)
+                    .single()
+                    .map(|dt| {
+                        dt.with_timezone(&chrono::Utc)
+                            .format(API_DATETIME_FMT)
+                            .to_string()
+                    })
+                    .unwrap_or_else(|| chrono::Utc::now().format(API_DATETIME_FMT).to_string())
+            }
+        })
+        .unwrap_or_else(|| chrono::Utc::now().format(API_DATETIME_FMT).to_string());
+    end_midnight
+}
+
+/// Returns today's date in the given IANA timezone (falls back to system local).
+fn tz_today(timezone: &str) -> NaiveDate {
+    if let Ok(tz) = timezone.parse::<Tz>() {
+        chrono::Utc::now().with_timezone(&tz).date_naive()
+    } else {
+        Local::now().date_naive()
+    }
 }

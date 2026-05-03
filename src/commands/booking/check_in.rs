@@ -17,10 +17,11 @@ enum DateMode {
 }
 
 pub async fn run(profile: Profile, date: &str) -> Result<()> {
+    let timezone = profile.timezone.clone();
     let date_mode = if date == "latest" {
         DateMode::Latest
     } else {
-        DateMode::Explicit(parse_date(date)?)
+        DateMode::Explicit(parse_date(date, &timezone)?)
     };
 
     tracing::debug!(location_id = %profile.location_id, date, "Running booking check-in");
@@ -29,9 +30,9 @@ pub async fn run(profile: Profile, date: &str) -> Result<()> {
 
     match date_mode {
         DateMode::Explicit(target_date) => {
-            run_explicit(&mut client, &location_id, target_date).await
+            run_explicit(&mut client, &location_id, &timezone, target_date).await
         }
-        DateMode::Latest => run_latest(&mut client, &location_id).await,
+        DateMode::Latest => run_latest(&mut client, &location_id, &timezone).await,
     }
 }
 
@@ -39,16 +40,19 @@ pub async fn run(profile: Profile, date: &str) -> Result<()> {
 async fn run_explicit(
     client: &mut EnvoyClient,
     location_id: &str,
+    timezone: &str,
     target_date: chrono::NaiveDate,
 ) -> Result<()> {
+    // Use the profile timezone for start/end to correctly bracket the day
+    let tz = timezone.parse::<chrono_tz::Tz>().unwrap_or(chrono_tz::UTC);
     let start = target_date
         .and_hms_opt(0, 0, 0)
-        .and_then(|naive| chrono::Local.from_local_datetime(&naive).single())
+        .and_then(|naive| tz.from_local_datetime(&naive).single())
         .with_context(|| format!("failed to compute start time for {target_date}"))?
         .to_rfc3339();
     let end = target_date
         .and_hms_opt(23, 59, 59)
-        .and_then(|naive| chrono::Local.from_local_datetime(&naive).single())
+        .and_then(|naive| tz.from_local_datetime(&naive).single())
         .with_context(|| format!("failed to compute end time for {target_date}"))?
         .to_rfc3339();
 
@@ -74,9 +78,9 @@ async fn run_explicit(
 }
 
 /// Check in in temporal order, stopping at the first future invite.
-async fn run_latest(client: &mut EnvoyClient, location_id: &str) -> Result<()> {
-    let start = default_start_date();
-    let end = default_end_date();
+async fn run_latest(client: &mut EnvoyClient, location_id: &str, timezone: &str) -> Result<()> {
+    let start = default_start_date(timezone);
+    let end = default_end_date(timezone);
 
     let sp = spinner::start("Fetching bookings...");
     let dates = client
