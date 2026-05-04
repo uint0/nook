@@ -1,5 +1,13 @@
 use std::time::Duration;
 
+/// Returns true for transient network errors that are safe to retry:
+/// timeouts, connection errors, and incomplete responses.
+fn is_transient_error(e: &anyhow::Error) -> bool {
+    e.downcast_ref::<reqwest::Error>()
+        .map(|re| re.is_timeout() || re.is_connect() || re.is_request())
+        .unwrap_or(false)
+}
+
 use anyhow::{Context, Result};
 use rand::Rng;
 use reqwest::StatusCode;
@@ -88,62 +96,64 @@ impl EnvoyClient {
         Ok(resp)
     }
 
-    /// Send a GraphQL request with exponential backoff on 5xx / network errors.
-    async fn send_with_backoff(&self, body: &serde_json::Value) -> Result<reqwest::Response> {
+    /// Core backoff helper — retries `f` on 5xx responses or timeout/connection errors.
+    ///
+    /// Network errors (timeouts, connection refused) are retried the same as 5xx responses.
+    /// After MAX_RETRIES attempts the last response or error is returned as-is.
+    async fn with_backoff<F, Fut>(label: &str, mut f: F) -> Result<reqwest::Response>
+    where
+        F: FnMut() -> Fut,
+        Fut: std::future::Future<Output = Result<reqwest::Response>>,
+    {
         let mut attempt = 0u32;
         loop {
             if attempt > 0 {
-                tracing::debug!(attempt, "Retrying GraphQL request after backoff");
+                tracing::debug!(attempt, label, "Retrying request after backoff");
             }
-            match self.post_graphql(body).await {
+            let result = f().await;
+            let should_retry = match &result {
                 Ok(resp) if resp.status().is_server_error() => {
-                    attempt += 1;
-                    if attempt > MAX_RETRIES {
-                        return Ok(resp);
-                    }
-                    let base = BASE_BACKOFF_MS * (1 << (attempt - 1));
-                    let jitter = rand::thread_rng().gen_range(0..base.max(1));
-                    let delay = Duration::from_millis(base + jitter);
                     warn!(
                         status = %resp.status(),
                         attempt,
-                        delay_ms = delay.as_millis(),
-                        "Server error, retrying after backoff..."
+                        label,
+                        "Server error, will retry"
                     );
-                    tokio::time::sleep(delay).await;
+                    true
                 }
-                other => return other.context("failed to send GraphQL request"),
+                Err(e) if is_transient_error(e) => {
+                    warn!(
+                        error = %e,
+                        attempt,
+                        label,
+                        "Transient network error, will retry"
+                    );
+                    true
+                }
+                _ => false,
+            };
+
+            if !should_retry || attempt >= MAX_RETRIES {
+                return result;
             }
+
+            attempt += 1;
+            let base = BASE_BACKOFF_MS * (1 << (attempt - 1));
+            let jitter = rand::thread_rng().gen_range(0..base.max(1));
+            let delay = Duration::from_millis(base + jitter);
+            warn!(attempt, delay_ms = delay.as_millis(), label, "Retrying after backoff...");
+            tokio::time::sleep(delay).await;
         }
     }
 
-    /// Send a REST GET with exponential backoff on 5xx / network errors.
+    /// Send a GraphQL request with exponential backoff on 5xx / timeout errors.
+    async fn send_with_backoff(&self, body: &serde_json::Value) -> Result<reqwest::Response> {
+        Self::with_backoff("GraphQL", || self.post_graphql(body)).await
+    }
+
+    /// Send a REST GET with exponential backoff on 5xx / timeout errors.
     async fn get_with_backoff(&self, url: &str) -> Result<reqwest::Response> {
-        let mut attempt = 0u32;
-        loop {
-            if attempt > 0 {
-                tracing::debug!(attempt, url, "Retrying REST request after backoff");
-            }
-            match self.get_rest(url).await {
-                Ok(resp) if resp.status().is_server_error() => {
-                    attempt += 1;
-                    if attempt > MAX_RETRIES {
-                        return Ok(resp);
-                    }
-                    let base = BASE_BACKOFF_MS * (1 << (attempt - 1));
-                    let jitter = rand::thread_rng().gen_range(0..base.max(1));
-                    let delay = Duration::from_millis(base + jitter);
-                    warn!(
-                        status = %resp.status(),
-                        attempt,
-                        delay_ms = delay.as_millis(),
-                        "Server error, retrying after backoff..."
-                    );
-                    tokio::time::sleep(delay).await;
-                }
-                other => return other.context("failed to send REST request"),
-            }
-        }
+        Self::with_backoff(url, || self.get_rest(url)).await
     }
 
     /// Refresh the access token and persist via the TokenStore.
